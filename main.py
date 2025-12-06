@@ -19,7 +19,10 @@ load_dotenv()
 # instruction = """Use flights.google.com to find the lowest fare from all eligible one-way flights for 1 adult from JFK to Heathrow in the next 30 days."""
 
 # Example 3: Solar Eclipse Research
-instruction = """Search for the next visible solar eclipse in North America and its expected date, and what about the one after that."""
+# instruction = """Search for the next visible solar eclipse in North America and its expected date, and what about the one after that."""
+
+# Example 4: Ticket Search
+instruction = """Find the best ticket price for Louis CK shows in San Francisco"""
 
 # Example 4: GitHub PR Verification
 # instruction = """Find the most recently opened non-draft PR on Github for Browserbase's Stagehand project and make sure the combination-evals in the PR validation passed."""
