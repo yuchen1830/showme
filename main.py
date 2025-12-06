@@ -35,7 +35,7 @@ async def main():
     # Initialize Stagehand with LOCAL browser (no Browserbase needed!)
     config = StagehandConfig(
         env="LOCAL",
-        model_api_key=os.environ.get("GOOGLE_API_KEY"),  # this is the model stagehand uses in act, observe, extract (not agent)
+        model_api_key=os.environ.get("GEMINI_API_KEY"),  # this is the model stagehand uses in act, observe, extract (not agent)
         headless=False,  # Set to True to hide browser window
         verbose=1  # 0 = errors only, 1 = info, 2 = debug
         # (When handling sensitive data like passwords or API keys, set verbose: 0 to prevent secrets from appearing in logs.)
@@ -66,7 +66,7 @@ async def main():
                 You are currently on the following page: {page.url}.
                 Do not ask follow up questions, the user will trust your judgement. If you are getting blocked on google, try another search engine.""",
                 options={
-                    "api_key": os.getenv("GOOGLE_API_KEY"),
+                    "api_key": os.getenv("GEMINI_API_KEY"),
                 },
             )
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     except Exception as err:
         print(f"Error in computer use agent example: {err}")
         print("Common issues:")
-        print("  - Check .env file has GOOGLE_API_KEY set")
+        print("  - Check .env file has GEMINI_API_KEY set")
         print("  - Make sure you ran: pip install -r requirements.txt")
         print("Docs: https://docs.stagehand.dev/v3/first-steps/introduction")
         exit(1)
