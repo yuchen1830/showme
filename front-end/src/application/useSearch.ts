@@ -1,74 +1,76 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { TicketApi } from '@/infrastructure/api/ticketApi'
+import { useState } from 'react'
 import type { Event } from '@/domain/entities/Event'
 import type { SearchCriteria } from '@/domain/entities/SearchCriteria'
+import { sortEventsByPriceAndDistance } from '@/domain/entities/Event'
+import { backendApi } from '@/infrastructure/api/backendApi'
+import { adaptBackendEvents } from '@/infrastructure/api/backendAdapter'
 
-export function useSearch() {
-  const navigate = useNavigate()
+interface UseSearchReturn {
+  events: Event[]
+  loading: boolean
+  error: string | null
+  search: (criteria: SearchCriteria) => Promise<void>
+  clearError: () => void
+}
+
+export function useSearch(): UseSearchReturn {
   const [events, setEvents] = useState<Event[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [searchCriteria, setSearchCriteria] = useState<SearchCriteria | null>(null)
 
-  const ticketApi = new TicketApi()
-
-  useEffect(() => {
-    loadSearchCriteria()
-  }, [])
-
-  const loadSearchCriteria = async () => {
-    try {
-      const stored = sessionStorage.getItem('searchCriteria')
-      if (!stored) {
-        // No search criteria, redirect to onboarding
-        navigate('/')
-        return
-      }
-
-      const criteria: SearchCriteria = JSON.parse(stored)
-      // Parse dates back from strings
-      criteria.startDate = new Date(criteria.startDate)
-      criteria.endDate = new Date(criteria.endDate)
-      
-      setSearchCriteria(criteria)
-      await performSearch(criteria)
-    } catch (err) {
-      setError('Failed to load search criteria')
-      setIsLoading(false)
-    }
-  }
-
-  const performSearch = async (criteria: SearchCriteria) => {
-    setIsLoading(true)
+  const search = async (criteria: SearchCriteria) => {
+    setLoading(true)
     setError(null)
 
     try {
-      const results = await ticketApi.searchEvents(criteria)
-      setEvents(results)
+      // Extract coordinates from location
+      const location =
+        criteria.location.type === 'coords'
+          ? criteria.location
+          : { lat: 40.7128, lng: -74.006 } // Default to NYC if text location
+
+      const locationText =
+        criteria.location.type === 'text'
+          ? criteria.location.value
+          : `${location.lat}, ${location.lng}`
+
+      // Call backend API
+      const response = await backendApi.searchEvents({
+        query: criteria.query,
+        location: location,
+        locationText: locationText,
+        startDate: criteria.startDate,
+        endDate: criteria.endDate,
+        maxPrice: criteria.maxPrice,
+      })
+
+      // Convert backend events to frontend entities
+      const adaptedEvents = adaptBackendEvents(response.events, location)
+
+      // Sort by price and distance (frontend domain logic)
+      const sortedEvents = sortEventsByPriceAndDistance(adaptedEvents)
+
+      setEvents(sortedEvents)
     } catch (err) {
-      setError('Failed to search events. Please try again.')
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to search events'
+      setError(errorMessage)
       setEvents([])
+      console.error('Search error:', err)
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  const handleEventClick = (event: Event) => {
-    navigate(`/seatmap/${event.id}`)
-  }
-
-  const handleModifySearch = () => {
-    navigate('/')
+  const clearError = () => {
+    setError(null)
   }
 
   return {
     events,
-    isLoading,
+    loading,
     error,
-    searchCriteria,
-    handleEventClick,
-    handleModifySearch,
+    search,
+    clearError,
   }
 }
-
