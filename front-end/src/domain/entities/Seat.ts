@@ -32,3 +32,4 @@ export function isHighValueSeat(seat: Seat, threshold = 70): boolean {
   return seat.available && seat.aiValueScore >= threshold
 }
 
+

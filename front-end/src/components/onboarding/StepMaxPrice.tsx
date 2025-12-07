@@ -55,3 +55,4 @@ export function StepMaxPrice({ value, onChange, onSubmit, onBack }: StepMaxPrice
   )
 }
 
+

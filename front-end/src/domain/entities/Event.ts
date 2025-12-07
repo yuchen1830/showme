@@ -41,3 +41,4 @@ export function sortEventsByPriceAndDistance(events: Event[]): Event[] {
   })
 }
 
+

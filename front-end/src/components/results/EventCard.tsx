@@ -72,3 +72,4 @@ export function EventCard({ event, onClick }: EventCardProps) {
   )
 }
 
+

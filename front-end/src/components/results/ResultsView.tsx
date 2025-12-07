@@ -27,3 +27,4 @@ export function ResultsView({ events, onEventClick }: ResultsViewProps) {
   )
 }
 
+

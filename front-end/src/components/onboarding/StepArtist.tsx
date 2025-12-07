@@ -41,3 +41,4 @@ export function StepArtist({ value, onChange, onNext }: StepArtistProps) {
   )
 }
 
+
