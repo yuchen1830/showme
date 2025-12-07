@@ -27,7 +27,7 @@ export function OnboardingWizard() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
       <div className="w-full">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-white mb-2">ShowMe</h1>
+          <h1 className="text-4xl font-bold text-white mb-2">ShowMe AI</h1>
           <p className="text-slate-300">Find your perfect tickets</p>
         </div>
 

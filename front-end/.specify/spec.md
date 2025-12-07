@@ -1,4 +1,4 @@
-# Feature Specification: ShowMe Ticket Search
+# Feature Specification: ShowMe AI Ticket Search
 
 **Feature Branch**: `001-ticket-search-ui`  
 **Created**: 2025-12-06  

@@ -1,4 +1,4 @@
-# Implementation Plan: ShowMe Ticket Search
+# Implementation Plan: ShowMe AI Ticket Search
 
 **Branch**: `001-ticket-search-ui` | **Date**: 2025-12-06 | **Spec**: [spec.md](./spec.md)  
 **Input**: Feature specification from `.specify/spec.md`

@@ -1,4 +1,4 @@
-# Tasks: ShowMe Ticket Search
+# Tasks: ShowMe AI Ticket Search
 
 **Tests**: TDD is NON-NEGOTIABLE per constitution. All tests written FIRST.
 
