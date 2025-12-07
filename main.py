@@ -1,102 +1,176 @@
-# Stagehand + Browserbase: Computer Use Agent (CUA) Example - See README.md for full documentation
+"""
+ShowMe - Multi-Agent Ticket Search Expert
+Finds the best VALUE tickets across multiple platforms.
 
-import os
+Usage:
+    python main.py                          # Interactive mode
+    python main.py "Artist Name" "City"     # Direct search
+    python main.py --headless               # Run without browser UI
+"""
+
 import asyncio
-from dotenv import load_dotenv
-from stagehand import Stagehand, StagehandConfig
+import json
+import sys
+from datetime import datetime
 
-# Load environment variables
+from dotenv import load_dotenv
+
+from orchestrator import run_ticket_search
+
 load_dotenv()
 
-# ============================================================================
-# EXAMPLE INSTRUCTIONS - Choose one to test different scenarios
-# ============================================================================
-
-# Example 1: Learning Plan Creation
-# instruction = """I want to learn more about Sourdough Bread Making. It's my first time learning about it, and want to get a good grasp by investing 1 hour a day for the next 2 months. Go find online courses/resources, create a plan cross-referencing the time I want to invest with the modules/timelines of the courses and return the plan"""
-
-# Example 2: Flight Search
-# instruction = """Use flights.google.com to find the lowest fare from all eligible one-way flights for 1 adult from JFK to Heathrow in the next 30 days."""
-
-# Example 3: Solar Eclipse Research
-# instruction = """Search for the next visible solar eclipse in North America and its expected date, and what about the one after that."""
-
-# Example 4: Ticket Search
-instruction = """Find the best ticket price for Louis CK shows in San Francisco"""
-
-# Example 4: GitHub PR Verification
-# instruction = """Find the most recently opened non-draft PR on Github for Browserbase's Stagehand project and make sure the combination-evals in the PR validation passed."""
 
 # ============================================================================
+# EXAMPLE SEARCHES - Uncomment one to test
+# ============================================================================
+
+# Example 1: Comedy show
+DEFAULT_QUERY = "Louis CK"
+DEFAULT_LOCATION = "Stockton"
+
+# Example 2: Concert
+# DEFAULT_QUERY = "Taylor Swift"
+# DEFAULT_LOCATION = "Los Angeles"
+
+# Example 3: Sports
+# DEFAULT_QUERY = "Lakers vs Warriors"
+# DEFAULT_LOCATION = "Los Angeles"
+
+
+# ============================================================================
+# DISPLAY FUNCTIONS
+# ============================================================================
+
+
+def print_results(result):
+    """Pretty print search results."""
+    print("\n" + "=" * 70)
+    print("TOP TICKET RECOMMENDATIONS (by Value Score)")
+    print("=" * 70)
+
+    if not result.ranked_seats:
+        print("\nNo tickets found. Check the errors below.")
+    else:
+        # Show top 10 seats
+        for i, seat in enumerate(result.ranked_seats[:10], 1):
+            score_bar = "█" * (seat.aiValueScore // 10) + "░" * (10 - seat.aiValueScore // 10)
+            print(f"\n#{i} | Score: {seat.aiValueScore}/100 [{score_bar}]")
+            print(f"    Section: {seat.section}")
+            if seat.row:
+                print(f"    Row: {seat.row}")
+            print(f"    Price: ${seat.price:.2f}")
+            print(f"    Source: {seat.source}")
+            if seat.url:
+                print(f"    URL: {seat.url}")
+
+    # Show events by source
+    if result.events:
+        print("\n" + "-" * 70)
+        print("PRICE BY SOURCE")
+        print("-" * 70)
+        for event in result.events:
+            print(f"  {event.vendorSource.upper():15} | Lowest: ${event.lowestPrice:.2f}")
+
+    # Show errors
+    if result.errors:
+        print("\n" + "-" * 70)
+        print("WARNINGS/ERRORS")
+        print("-" * 70)
+        for error in result.errors:
+            print(f"  ⚠ {error}")
+
+
+def export_json(result, filename=None):
+    """Export results to JSON for frontend."""
+    if not filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"downloads/results_{timestamp}.json"
+
+    data = result.to_frontend_json()
+
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+
+    print(f"\nResults exported to: {filename}")
+    return filename
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
 
 async def main():
-    print("Starting Computer Use Agent Example...")
+    """Main entry point."""
+    # Parse command line arguments
+    query = DEFAULT_QUERY
+    location = DEFAULT_LOCATION
+    headless = False
+    sites = None  # Use all sites
 
-    # Initialize Stagehand with LOCAL browser (no Browserbase needed!)
-    config = StagehandConfig(
-        env="LOCAL",
-        model_api_key=os.environ.get("GEMINI_API_KEY"),  # this is the model stagehand uses in act, observe, extract (not agent)
-        headless=False,  # Set to True to hide browser window
-        verbose=1  # 0 = errors only, 1 = info, 2 = debug
-        # (When handling sensitive data like passwords or API keys, set verbose: 0 to prevent secrets from appearing in logs.)
-        # https://docs.stagehand.dev/configuration/logging
+    # Simple argument parsing
+    args = sys.argv[1:]
+    if "--headless" in args:
+        headless = True
+        args.remove("--headless")
+
+    if "--help" in args or "-h" in args:
+        print(__doc__)
+        print("\nAvailable sites: ticketmaster, stubhub, seatgeek, tickpick, vividseats")
+        return
+
+    if len(args) >= 1:
+        query = args[0]
+    if len(args) >= 2:
+        location = args[1]
+
+    print(f"""
+╔══════════════════════════════════════════════════════════════════════╗
+║                    SHOWME - TICKET SEARCH EXPERT                     ║
+║                  Multi-Agent Value Analysis System                   ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+Searching for: {query}
+Location: {location}
+Mode: {'Headless' if headless else 'Visual (browsers will open)'}
+
+This will:
+1. Research event info via Google
+2. Search 4 ticket sites IN PARALLEL (watch the browsers!)
+3. Analyze venue seating quality
+4. Calculate VALUE scores for each ticket
+5. Rank and present best options
+
+Press Ctrl+C to cancel at any time.
+""")
+
+    # Run the search
+    result = await run_ticket_search(
+        query=query,
+        location=location,
+        headless=headless,
+        sites=sites,
     )
 
-    try:
-        async with Stagehand(config) as stagehand:
-            print("Stagehand initialized successfully!")
-            print("Running with local browser...")
+    # Display results
+    print_results(result)
 
-            page = stagehand.page
+    # Export to JSON for frontend
+    export_json(result)
 
-            # Navigate to search engine with extended timeout for slow-loading sites.
-            print("Navigating to Google search...")
-            await page.goto(
-                "https://www.google.com/", 
-                wait_until="domcontentloaded",
-                timeout=60000  # Extended timeout for reliable page loading
-            )
+    return result
 
-            # Create agent with computer use capabilities for autonomous web browsing.
-            print("Creating Computer Use Agent...")
-            agent = stagehand.agent(
-                provider="google",
-                model="gemini-2.5-computer-use-preview-10-2025",
-                instructions=f"""You are a helpful assistant that can use a web browser.
-                You are currently on the following page: {page.url}.
-                Do not ask follow up questions, the user will trust your judgement. If you are getting blocked on google, try another search engine.""",
-                options={
-                    "api_key": os.getenv("GEMINI_API_KEY"),
-                },
-            )
-
-            # Execute the autonomous task with the Computer Use Agent
-            print("Executing instruction:", instruction)
-            result = await agent.execute(
-                instruction=instruction,
-                max_steps=30, # The maximum number of steps the agent can take to complete the task
-                auto_screenshot=True
-            )
-
-            if result.success == True:
-                print("Task completed successfully!")
-                print("Result:", result)
-            else:
-                print("Task failed or was incomplete")
-        
-        print("Session closed successfully")
-
-    except Exception as error:
-        print(f"Error executing computer use agent: {error}")
-        raise
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n\nSearch cancelled by user.")
     except Exception as err:
-        print(f"Error in computer use agent example: {err}")
-        print("Common issues:")
-        print("  - Check .env file has GEMINI_API_KEY set")
-        print("  - Make sure you ran: pip install -r requirements.txt")
-        print("Docs: https://docs.stagehand.dev/v3/first-steps/introduction")
-        exit(1)
+        print(f"\nError: {err}")
+        print("\nTroubleshooting:")
+        print("  1. Check .env has GEMINI_API_KEY set")
+        print("  2. Run: pip install -r requirements.txt")
+        print("  3. Make sure you have Chrome installed")
+        print("\nDocs: https://docs.stagehand.dev")
+        sys.exit(1)
