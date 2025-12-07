@@ -80,32 +80,59 @@ If blocked on one site, try alternative approaches.""",
         )
         print(f"[{self.name}] Navigated to {url}")
 
-    async def execute_agent(self, instruction: str) -> dict:
-        """Execute an instruction with the Gemini agent."""
-        agent = self.create_agent(self.get_system_instructions())
+    async def execute_agent(self, instruction: str, max_retries: int = 2) -> dict:
+        """Execute an instruction with the Gemini agent with retry logic."""
+        import asyncio
+        
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                agent = self.create_agent(self.get_system_instructions())
 
-        print(f"[{self.name}] Executing: {instruction[:100]}...")
+                print(f"[{self.name}] Executing (attempt {attempt + 1}/{max_retries + 1}): {instruction[:100]}...")
 
-        result = await agent.execute(
-            instruction=instruction,
-            max_steps=self.max_steps,
-            auto_screenshot=True,
-        )
+                result = await agent.execute(
+                    instruction=instruction,
+                    max_steps=self.max_steps,
+                    auto_screenshot=True,
+                )
 
-        # Gemini agent result object doesn't have .success attribute
-        # Check if execution completed without raising exception
-        success = result is not None
-
-        if success:
-            self.status = AgentStatus.SUCCESS
-            print(f"[{self.name}] Task completed successfully")
-        else:
-            self.status = AgentStatus.PARTIAL
-            print(f"[{self.name}] Task completed with issues")
-
+                # Check if we got a valid result
+                if result is not None:
+                    # Check for error messages in result that indicate API issues
+                    result_msg = getattr(result, 'message', '') or ''
+                    if '500 INTERNAL' in str(result_msg) or 'No candidates' in str(result_msg):
+                        raise Exception(f"API error in result: {result_msg[:200]}")
+                    
+                    self.status = AgentStatus.SUCCESS
+                    print(f"[{self.name}] Task completed successfully")
+                    return {"success": True, "result": result}
+                else:
+                    raise Exception("Agent returned None result")
+                    
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                
+                # Check if it's a retryable error
+                retryable = any(x in error_str for x in ['500', 'INTERNAL', 'No candidates', 'NoneType'])
+                
+                if retryable and attempt < max_retries:
+                    wait_time = (attempt + 1) * 2  # 2s, 4s backoff
+                    print(f"[{self.name}] Retryable error: {error_str[:100]}... Waiting {wait_time}s before retry")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"[{self.name}] Non-retryable error or max retries reached: {error_str[:200]}")
+                    break
+        
+        # All retries exhausted
+        self.status = AgentStatus.PARTIAL
+        print(f"[{self.name}] Task completed with issues after {max_retries + 1} attempts")
         return {
-            "success": success,
-            "result": result,
+            "success": False,
+            "result": None,
+            "error": str(last_error),
         }
 
     @abstractmethod

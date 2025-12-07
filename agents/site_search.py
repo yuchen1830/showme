@@ -18,13 +18,26 @@ SITE_CONFIGS = {
         "name": "Ticketmaster",
         "instructions": """You are searching Ticketmaster for tickets.
 
-IMPORTANT:
-- Include ALL fees in the price (service fee, facility fee)
-- Click "See Price Details" or hover to get the true total price
-- Note if tickets are "Official Platinum" (dynamic pricing - often overpriced)
-- Extract section, row, and seat numbers when available
-- If you see a price range, report the lower price
-- Watch for "Verified Resale" tickets - note this in your findings""",
+NAVIGATION STRATEGY (Ticketmaster's location filter is buggy - use this approach instead):
+1. Search for the artist name ONLY in the search bar
+2. DO NOT try to use the location filter - it clears unexpectedly
+3. After search results load, SCROLL DOWN to find events in the target city
+4. Click on the correct event to view tickets
+
+HANDLING POPUPS:
+- If you see "What You Need To Know" popup → Click "Accept & Continue"
+- If you see "How many tickets?" popup → Click "Any" or a number
+- If you see cookie consent → Accept it
+- If you see feedback survey → Close it with X
+
+PRICE EXTRACTION:
+- Prices shown include fees (look for "Prices include fees")
+- Note if tickets are "Official Platinum" (dynamic pricing)
+- Note if tickets are "Verified Resale"
+- Extract: Section, Row, Price for each listing
+
+OUTPUT FORMAT - Use this exact format for each ticket:
+Section: [name], Row: [row], Price: $[amount]""",
     },
     "stubhub": {
         "url": "https://www.stubhub.com",
@@ -92,8 +105,8 @@ class SiteSearchAgent(BaseAgent):
 
         super().__init__(
             name=f"{self.site_config['name']}Agent",
-            max_steps=30,  # Increased for thorough price extraction
-            headless=headless,
+            max_steps=20,  # Increased for Ticketmaster popups and location filter
+            headless=False,  # Never use headless mode
         )
 
     def get_system_instructions(self) -> str:
@@ -110,9 +123,8 @@ For each ticket listing you find, extract:
 - Total price with fees
 - Any special notes
 
-CRITICAL: When viewing ticket listings:
-- NEVER use scroll_at action - it causes validation errors
-- Use scroll_document or keypress PageDown to see more tickets
+SCROLLING:
+- Use keypress PageDown to scroll (NOT scroll_at - it has a library bug)
 - Extract visible tickets BEFORE scrolling
 - Format your findings clearly: "Section: X, Row: Y, Price: $Z"
 
@@ -139,29 +151,44 @@ If you encounter a CAPTCHA or are blocked, report this and try to proceed if pos
                 # Navigate to the site
                 await self.navigate(self.site_config["url"])
 
-                # Build search instruction
-                # Prioritize city over potentially mismatched venue names
-                search_instruction = f"""Search for tickets to: {event_info.artist_name}
+                # Build search instruction - site-specific strategies
+                if self.site_name == "ticketmaster":
+                    # Ticketmaster: Skip location filter (it's buggy), scroll to find city
+                    search_instruction = f"""Search for tickets to: {event_info.artist_name}
+
+Target City: {event_info.city}
+
+STRATEGY FOR TICKETMASTER:
+1. Type "{event_info.artist_name}" in the search bar and press Enter
+2. DO NOT use the location filter - it clears unexpectedly
+3. Scroll down the results to find shows in {event_info.city}
+4. Click on the {event_info.city} event to view tickets
+5. Handle popups: Click "Accept & Continue" or "Any" for ticket quantity
+6. Extract all visible ticket prices with Section, Row, and Price
+
+OUTPUT FORMAT - List each ticket like this:
+Section: [name], Row: [row], Price: $[amount]
+
+Use keypress PageDown to scroll and see more tickets."""
+                else:
+                    # Other sites: Use location filter normally
+                    search_instruction = f"""Search for tickets to: {event_info.artist_name}
 
 City: {event_info.city}
 
 Steps:
 1. Use the search bar to search for "{event_info.artist_name}"
-2. Set location filter to "{event_info.city}" (ignore other cities)
-3. Select ANY show in {event_info.city} - the exact venue doesn't matter
+2. Set location filter to "{event_info.city}" if available
+3. Select ANY show in {event_info.city}
 4. View the ticket listings page
-5. Extract pricing for ALL visible tickets - note section, row, and price for each
-6. Use scroll_document (NOT scroll_at) if you need to see more listings
+5. Extract pricing for ALL visible tickets
 
-CRITICAL INSTRUCTIONS:
-- NEVER use scroll_at - it causes errors. Use scroll_document or keypress PageDown instead.
-- Extract data from what's currently visible before scrolling
-- List each ticket with: Section, Row (if shown), Price
-- Example format: "Section: Upper Balc Center, Row: V, Price: $11"
+OUTPUT FORMAT - List each ticket like this:
+Section: [name], Row: [row], Price: $[amount]
 
-IMPORTANT: Only find tickets in or very near {event_info.city}. If no shows exist there, report that clearly.
+Use keypress PageDown to scroll and see more listings.
 
-After viewing tickets, provide a detailed summary with specific sections and prices."""
+IMPORTANT: Only find tickets in or very near {event_info.city}."""
 
                 # Execute the search
                 agent_result = await self.execute_agent(search_instruction)
@@ -220,7 +247,7 @@ After viewing tickets, provide a detailed summary with specific sections and pri
         print(f"[{self.name}] Parsing result (first 1000 chars): {full_text[:1000]}")
 
         # Enhanced parsing patterns
-        # Pattern 1: "Section: X, Row: Y, Price: $Z"
+        # Pattern 1: "Section: X, Row: Y, Price: $Z" (agent output format)
         structured_pattern = r'Section:\s*([^,\n]+)(?:,\s*Row:\s*([^,\n]+))?,.*?Price:\s*\$(\d+(?:\.\d{2})?)'
         structured_matches = re.findall(structured_pattern, full_text, re.IGNORECASE)
 
@@ -234,6 +261,46 @@ After viewing tickets, provide a detailed summary with specific sections and pri
                 quantity=2,
             )
             listings.append(listing)
+
+        # Pattern 2: Ticketmaster style "Sec OR • Row M" with nearby price
+        # Matches: "Sec OR • Row M, Standard Admission, $99.75"
+        ticketmaster_pattern = r'Sec\s+([A-Z0-9]+)\s*[•·]\s*Row\s+([A-Z0-9]+)[^$]*\$(\d+(?:\.\d{2})?)'
+        tm_matches = re.findall(ticketmaster_pattern, full_text, re.IGNORECASE)
+        
+        for section, row, price in tm_matches:
+            # Avoid duplicates
+            is_dup = any(
+                l.section == section.strip() and l.row == row.strip() 
+                for l in listings
+            )
+            if not is_dup:
+                listings.append(TicketListing(
+                    source=self.site_name,
+                    section=section.strip(),
+                    row=row.strip(),
+                    price_per_ticket=float(price),
+                    total_price=float(price),
+                    quantity=2,
+                ))
+
+        # Pattern 3: TickPick/general style "**Section:** Name, **Row:** X, ... $Y"
+        tickpick_pattern = r'\*\*(?:Section|Sec)[:\s]*\*\*\s*([^,*]+),?\s*\*\*Row[:\s]*\*\*\s*([^,*]+).*?\$(\d+(?:\.\d{2})?)'
+        tp_matches = re.findall(tickpick_pattern, full_text, re.IGNORECASE)
+        
+        for section, row, price in tp_matches:
+            is_dup = any(
+                l.section == section.strip() and l.row == row.strip() 
+                for l in listings
+            )
+            if not is_dup:
+                listings.append(TicketListing(
+                    source=self.site_name,
+                    section=section.strip(),
+                    row=row.strip(),
+                    price_per_ticket=float(price),
+                    total_price=float(price),
+                    quantity=2,
+                ))
 
         # Pattern 2: Fallback to simple price extraction if structured parsing fails
         if not listings:

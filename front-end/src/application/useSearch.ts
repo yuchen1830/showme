@@ -1,25 +1,51 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Event } from '@/domain/entities/Event'
 import type { SearchCriteria } from '@/domain/entities/SearchCriteria'
 import { sortEventsByPriceAndDistance } from '@/domain/entities/Event'
 import { backendApi } from '@/infrastructure/api/backendApi'
 import { adaptBackendEvents } from '@/infrastructure/api/backendAdapter'
 
-interface UseSearchReturn {
-  events: Event[]
-  loading: boolean
-  error: string | null
-  search: (criteria: SearchCriteria) => Promise<void>
-  clearError: () => void
-}
-
-export function useSearch(): UseSearchReturn {
+export function useSearch() {
   const [events, setEvents] = useState<Event[]>([])
-  const [loading, setLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true) // Start true to show loading immediately
   const [error, setError] = useState<string | null>(null)
+  const [searchCriteria, setSearchCriteria] = useState<SearchCriteria | null>(null)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
-  const search = async (criteria: SearchCriteria) => {
-    setLoading(true)
+  // Parse search criteria from URL on mount
+  useEffect(() => {
+    const query = searchParams.get('query')
+    const location = searchParams.get('location')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+    const maxPrice = searchParams.get('maxPrice')
+    const lat = searchParams.get('lat')
+    const lng = searchParams.get('lng')
+
+    if (query && location) {
+      const criteria: SearchCriteria = {
+        query,
+        location: lat && lng
+          ? { type: 'coords', lat: parseFloat(lat), lng: parseFloat(lng) }
+          : { type: 'text', value: location },
+        startDate: startDate ? new Date(startDate) : new Date(),
+        endDate: endDate ? new Date(endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        maxPrice: maxPrice ? parseInt(maxPrice) : 500,
+      }
+      setSearchCriteria(criteria)
+
+      // Execute search
+      executeSearch(criteria)
+    } else {
+      setIsLoading(false)
+      setError('No search criteria provided')
+    }
+  }, [searchParams])
+
+  const executeSearch = async (criteria: SearchCriteria) => {
+    setIsLoading(true)
     setError(null)
 
     try {
@@ -34,7 +60,8 @@ export function useSearch(): UseSearchReturn {
           ? criteria.location.value
           : `${location.lat}, ${location.lng}`
 
-      // Call backend API
+      // Call backend API - this takes 3-5 minutes for AI agent search
+      console.log('[useSearch] Starting AI agent search - this may take several minutes...')
       const response = await backendApi.searchEvents({
         query: criteria.query,
         location: location,
@@ -43,6 +70,8 @@ export function useSearch(): UseSearchReturn {
         endDate: criteria.endDate,
         maxPrice: criteria.maxPrice,
       })
+
+      console.log('[useSearch] Search complete, got', response.events.length, 'events')
 
       // Convert backend events to frontend entities
       const adaptedEvents = adaptBackendEvents(response.events, location)
@@ -56,21 +85,30 @@ export function useSearch(): UseSearchReturn {
         err instanceof Error ? err.message : 'Failed to search events'
       setError(errorMessage)
       setEvents([])
-      console.error('Search error:', err)
+      console.error('[useSearch] Search error:', err)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const clearError = () => {
-    setError(null)
+  const handleEventClick = (eventId: string) => {
+    navigate(`/event/${eventId}`)
+  }
+
+  const handleModifySearch = () => {
+    navigate('/')
   }
 
   return {
     events,
-    loading,
+    isLoading,
+    loading: isLoading, // Alias for compatibility
     error,
-    search,
-    clearError,
+    searchCriteria,
+    handleEventClick,
+    handleModifySearch,
+    search: executeSearch,
+    clearError: () => setError(null),
   }
 }
+

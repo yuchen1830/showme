@@ -16,8 +16,8 @@ class VenueIntelAgent(BaseAgent):
     def __init__(self, headless: bool = False):
         super().__init__(
             name="VenueIntelAgent",
-            max_steps=15,
-            headless=headless,
+            max_steps=12,  # Enough to find charts and reviews
+            headless=False,  # Never use headless mode
         )
 
     def get_system_instructions(self) -> str:
@@ -66,25 +66,31 @@ Format your findings as a clear assessment of each section's quality (rate 1-10)
                 # Navigate to Google
                 await self.navigate("https://www.google.com/")
 
-                # Search for venue seating information
-                search_instruction = f"""Research the seating at {venue_name} in {city}.
+                # Search for venue seating information - include city to avoid wrong venues
+                # Use city prominently to avoid finding venues in wrong locations
+                search_instruction = f"""Research the seating at {venue_name} in {city}, California.
 
-Step 1: Search for "{venue_name} seating chart"
+IMPORTANT: Make sure you find the venue in {city}, CA - not in other states/cities!
+
+Step 1: Search for "{venue_name} {city} CA seating chart"
 - Find and examine the seating chart image
-- Note all section names
+- Note all section names (Orchestra, Balcony, Floor, etc.)
+- If you find the wrong venue (wrong city/state), search again with "{city} CA" added
 
-Step 2: Search for "{venue_name} best seats reddit" or "{venue_name} seat review"
+Step 2: Search for "{venue_name} {city} best seats" or "best seats {city} theatre"
 - Find recommendations from people who've been there
 - Note which sections get positive reviews
 
-Step 3: Search for "{venue_name} worst seats" or "{venue_name} obstructed view"
-- Find warnings about sections to avoid
+Step 3: Search for "{venue_name} obstructed view" or "{city} theatre avoid sections"
+- Find any warnings about sections to avoid
 
-Summarize your findings:
-- List each major section with a quality rating (1-10)
-- Identify 2-3 "best value" sections (good quality, reasonable price)
-- Identify any sections to avoid
-- Include any insider tips you find"""
+OUTPUT FORMAT:
+List each section with a rating like this:
+- Section: [name], Quality: [1-10 rating], Notes: [any tips]
+
+Also list:
+- Best value sections: [names]
+- Sections to avoid: [names]"""
 
                 agent_result = await self.execute_agent(search_instruction)
 

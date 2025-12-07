@@ -17,8 +17,8 @@ class ResearchAgent(BaseAgent):
     def __init__(self, headless: bool = False):
         super().__init__(
             name="ResearchAgent",
-            max_steps=15,
-            headless=headless,
+            max_steps=8,  # Enough to search Google and extract event info
+            headless=False,  # Never use headless mode
         )
 
     def get_system_instructions(self) -> str:

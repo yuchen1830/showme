@@ -1,8 +1,7 @@
 """
 Search use case - Application layer
-Orchestrates the complete search flow
+Orchestrates the complete search flow using AI agents
 """
-import asyncio
 from typing import Protocol
 
 from src.domain.entities.event import Event
@@ -11,24 +10,17 @@ from src.domain.services.distance_service import DistanceService
 from src.domain.services.event_service import EventService
 
 
-class VendorClient(Protocol):
-    """Protocol for vendor API clients"""
+class AgentClient(Protocol):
+    """Protocol for agent-based search client"""
     async def search_events(self, criteria: SearchCriteria) -> list[Event]:
         ...
 
 
 class SearchUseCase:
-    """Use case for searching events across multiple vendors"""
+    """Use case for searching events using AI agent orchestrator"""
     
-    def __init__(
-        self,
-        ticketmaster_client: VendorClient,
-        stubhub_client: VendorClient,
-        seatgeek_client: VendorClient
-    ):
-        self.ticketmaster_client = ticketmaster_client
-        self.stubhub_client = stubhub_client
-        self.seatgeek_client = seatgeek_client
+    def __init__(self, agent_client: AgentClient):
+        self.agent_client = agent_client
         
         # Domain services
         self.distance_service = DistanceService()
@@ -38,9 +30,9 @@ class SearchUseCase:
         self,
         criteria: SearchCriteria
     ) -> list[Event]:
-        """Execute search across all vendors"""
-        # 1. Query all vendors concurrently
-        events = await self._query_vendors_concurrently(criteria)
+        """Execute search using AI agents"""
+        # 1. Query AI agent orchestrator (searches multiple sites internally)
+        events = await self.agent_client.search_events(criteria)
         
         if not events:
             return []
@@ -63,38 +55,6 @@ class SearchUseCase:
         
         return events
     
-    async def _query_vendors_concurrently(
-        self,
-        criteria: SearchCriteria
-    ) -> list[Event]:
-        """Query all vendors concurrently"""
-        tasks = [
-            self._safe_vendor_query(self.ticketmaster_client, criteria),
-            self._safe_vendor_query(self.stubhub_client, criteria),
-            self._safe_vendor_query(self.seatgeek_client, criteria),
-        ]
-        
-        results = await asyncio.gather(*tasks)
-        
-        # Flatten results
-        all_events = []
-        for vendor_events in results:
-            all_events.extend(vendor_events)
-        
-        return all_events
-    
-    async def _safe_vendor_query(
-        self,
-        client: VendorClient,
-        criteria: SearchCriteria
-    ) -> list[Event]:
-        """Query vendor with error handling"""
-        try:
-            return await client.search_events(criteria)
-        except Exception as e:
-            print(f"Vendor query failed: {e}")
-            return []
-    
     def _calculate_distances(
         self,
         events: list[Event],
@@ -113,3 +73,4 @@ class SearchUseCase:
             distances[event.id] = distance
         
         return distances
+

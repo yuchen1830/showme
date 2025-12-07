@@ -19,7 +19,7 @@ from agents import ResearchAgent, SiteSearchAgent, VenueIntelAgent, ValueAnalyze
 
 
 # Sites to search in parallel
-DEFAULT_SITES = ["ticketmaster", "stubhub", "seatgeek", "tickpick"]
+DEFAULT_SITES = ["ticketmaster", "tickpick"]
 
 # Timeout for each site search (5 minutes - agents need time to extract pricing)
 SITE_TIMEOUT = 500.0
